@@ -49,6 +49,16 @@ impl fmt::Display for ParseIpError {
 }
 impl std::error::Error for ParseIpError {}
 
+/// Parses an IPv6 address from a decimal-dotted format (16 decimal octets separated by dots).
+///
+/// # Example
+/// ```
+/// use pretty_ip::parse_ipv6_decimal_dotted;
+/// use std::net::Ipv6Addr;
+///
+/// let ip = parse_ipv6_decimal_dotted("42.0.35.199.71.166.181.1.248.39.5.126.9.166.22.11").unwrap();
+/// assert_eq!(ip, Ipv6Addr::new(0x2a00, 0x23c7, 0x47a6, 0xb501, 0xf827, 0x057e, 0x09a6, 0x160b));
+/// ```
 pub fn parse_ipv6_decimal_dotted(s: &str) -> Result<Ipv6Addr, ParseIpError> {
     let s = s.trim();
     if s.is_empty() {
@@ -61,64 +71,130 @@ pub fn parse_ipv6_decimal_dotted(s: &str) -> Result<Ipv6Addr, ParseIpError> {
     let mut bytes = [0u8; 16];
     for (i, part) in parts.iter().enumerate() {
         if part.is_empty() {
-            return Err(ParseIpError::InvalidOctet { idx: i, found: part.to_string() });
+            return Err(ParseIpError::InvalidOctet {
+                idx: i,
+                found: part.to_string(),
+            });
         }
         if !part.chars().all(|c| c.is_ascii_digit()) {
-            return Err(ParseIpError::InvalidOctet { idx: i, found: part.to_string() });
+            return Err(ParseIpError::InvalidOctet {
+                idx: i,
+                found: part.to_string(),
+            });
         }
         match u16::from_str(part) {
             Ok(v) if v <= 255 => bytes[i] = v as u8,
             Ok(v) => {
-                return Err(ParseIpError::ValueOutOfRange { idx: i, found: v as u128, max: 255 });
+                return Err(ParseIpError::ValueOutOfRange {
+                    idx: i,
+                    found: v as u128,
+                    max: 255,
+                });
             }
             Err(_) => {
-                return Err(ParseIpError::NumericParseError { idx: Some(i), src: part.to_string() });
+                return Err(ParseIpError::NumericParseError {
+                    idx: Some(i),
+                    src: part.to_string(),
+                });
             }
         }
     }
     Ok(Ipv6Addr::from(bytes))
 }
 
-/// Parse IPv4 from decimal integer.
+/// Parses an IPv4 address from a decimal integer string (e.g., `"3232235777"`).
+///
+/// # Example
+/// ```
+/// use pretty_ip::parse_ipv4_from_u32_decimal;
+/// use std::net::Ipv4Addr;
+///
+/// let ip = parse_ipv4_from_u32_decimal("3232235777").unwrap();
+/// assert_eq!(ip, Ipv4Addr::new(192, 168, 1, 1));
+/// ```
 pub fn parse_ipv4_from_u32_decimal(s: &str) -> Result<Ipv4Addr, ParseIpError> {
     let s = s.trim();
     if s.is_empty() {
         return Err(ParseIpError::EmptyInput);
     }
     if !s.chars().all(|c| c.is_ascii_digit()) {
-        return Err(ParseIpError::InvalidFormat("expected decimal integer with digits only"));
+        return Err(ParseIpError::InvalidFormat(
+            "expected decimal integer with digits only",
+        ));
     }
     match u128::from_str(s) {
         Ok(v) => {
             if v > (u32::MAX as u128) {
-                return Err(ParseIpError::Overflow { found: v.to_string(), max: u32::MAX.to_string() });
+                return Err(ParseIpError::Overflow {
+                    found: v.to_string(),
+                    max: u32::MAX.to_string(),
+                });
             }
             Ok(Ipv4Addr::from(v as u32))
         }
-        Err(_) => Err(ParseIpError::NumericParseError { idx: None, src: s.to_string() }),
+        Err(_) => Err(ParseIpError::NumericParseError {
+            idx: None,
+            src: s.to_string(),
+        }),
     }
 }
 
-/// Parse IPv4 from hex (with or without `0x`).
+/// Parses an IPv4 address from a hexadecimal string (with or without `0x` prefix).
+///
+/// # Example
+/// ```
+/// use pretty_ip::parse_ipv4_from_hex;
+/// use std::net::Ipv4Addr;
+///
+/// let ip = parse_ipv4_from_hex("0xC0A80101").unwrap();
+/// assert_eq!(ip, Ipv4Addr::new(192, 168, 1, 1));
+/// let ip2 = parse_ipv4_from_hex("c0a80101").unwrap();
+/// assert_eq!(ip2, ip);
+/// ```
 pub fn parse_ipv4_from_hex(s: &str) -> Result<Ipv4Addr, ParseIpError> {
     let s = s.trim();
     if s.is_empty() {
         return Err(ParseIpError::EmptyInput);
     }
-    let s = if s.starts_with("0x") || s.starts_with("0X") { &s[2..] } else { s };
+    let s = if s.starts_with("0x") || s.starts_with("0X") {
+        &s[2..]
+    } else {
+        s
+    };
     if s.is_empty() || s.len() > 8 {
-        return Err(ParseIpError::InvalidFormat("hex string must be 1..=8 hex digits"));
+        return Err(ParseIpError::InvalidFormat(
+            "hex string must be 1..=8 hex digits",
+        ));
     }
     if !s.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err(ParseIpError::InvalidFormat("non-hex character found"));
     }
     match u32::from_str_radix(s, 16) {
         Ok(v) => Ok(Ipv4Addr::from(v)),
-        Err(_) => Err(ParseIpError::NumericParseError { idx: None, src: s.to_string() }),
+        Err(_) => Err(ParseIpError::NumericParseError {
+            idx: None,
+            src: s.to_string(),
+        }),
     }
 }
 
-/// Try multiple parsing strategies. N/B, may not cover all edge cases
+/// Attempts to parse an IP address from a string using multiple strategies:
+/// - Standard IPv4/IPv6 notation
+/// - IPv6 decimal-dotted
+/// - IPv4 decimal integer
+/// - IPv4 hexadecimal
+///
+/// # Example
+/// ```
+/// use pretty_ip::parse_maybe_ip;
+/// use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+///
+/// let ip = parse_maybe_ip("c0a80101").unwrap();
+/// assert_eq!(ip, IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
+///
+/// let ip6 = parse_maybe_ip("42.0.35.199.71.166.181.1.248.39.5.126.9.166.22.11").unwrap();
+/// assert!(matches!(ip6, IpAddr::V6(_)));
+/// ```
 pub fn parse_maybe_ip(s: &str) -> Result<IpAddr, ParseIpError> {
     let s_trim = s.trim();
     if s_trim.is_empty() {
@@ -151,14 +227,41 @@ pub fn parse_maybe_ip(s: &str) -> Result<IpAddr, ParseIpError> {
     Err(ParseIpError::InvalidFormat("unrecognized IP format"))
 }
 
-/// Formatting helpers
+/// Formats an IPv6 address in fully expanded hexadecimal notation (e.g., `2001:0db8:0000:0000:0000:0000:0000:0001`).
+///
+/// # Example
+/// ```
+/// use pretty_ip::to_expanded_ipv6;
+/// use std::net::Ipv6Addr;
+///
+/// let ip = Ipv6Addr::LOCALHOST;
+/// assert_eq!(to_expanded_ipv6(&ip), "0000:0000:0000:0000:0000:0000:0000:0001");
+/// ```
 pub fn to_expanded_ipv6(ip: &Ipv6Addr) -> String {
-    ip.segments().iter().map(|s| format!("{:04x}", s)).collect::<Vec<_>>().join(":")
-}
-pub fn ipv6_to_decimal_dotted(ip: &Ipv6Addr) -> String {
-    ip.octets().iter().map(|b| b.to_string()).collect::<Vec<_>>().join(".")
+    ip.segments()
+        .iter()
+        .map(|s| format!("{:04x}", s))
+        .collect::<Vec<_>>()
+        .join(":")
 }
 
+/// Converts an IPv6 address to decimal-dotted notation (16 decimal octets separated by dots).
+///
+/// # Example
+/// ```
+/// use pretty_ip::ipv6_to_decimal_dotted;
+/// use std::net::Ipv6Addr;
+///
+/// let ip = Ipv6Addr::LOCALHOST;
+/// assert_eq!(ipv6_to_decimal_dotted(&ip), "0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.1");
+/// ```
+pub fn ipv6_to_decimal_dotted(ip: &Ipv6Addr) -> String {
+    ip.octets()
+        .iter()
+        .map(|b| b.to_string())
+        .collect::<Vec<_>>()
+        .join(".")
+}
 
 #[cfg(test)]
 mod tests {
@@ -197,10 +300,13 @@ mod tests {
     fn parse_ipv6_decimal_dotted_min_max_values() {
         // min all zeros
         let all_zeros = "0.".repeat(15) + "0";
-        assert_eq!(parse_ipv6_decimal_dotted(&all_zeros).unwrap(), Ipv6Addr::UNSPECIFIED);
+        assert_eq!(
+            parse_ipv6_decimal_dotted(&all_zeros).unwrap(),
+            Ipv6Addr::UNSPECIFIED
+        );
 
         // max all 255
-        let all_255  = "255.".repeat(15) + "255";
+        let all_255 = "255.".repeat(15) + "255";
         let v6 = parse_ipv6_decimal_dotted(&all_255).unwrap();
         let octs = v6.octets();
         assert!(octs.iter().all(|&b| b == 255));
@@ -258,7 +364,6 @@ mod tests {
             Err(ParseIpError::InvalidOctet { .. })
         ));
     }
-
 
     #[test]
     fn parse_ipv4_from_u32_decimal_non_digit() {
@@ -332,10 +437,7 @@ mod tests {
 
         println!("{:?}", r);
         // short hex should parse e.g. "1" => 0x1 -> 0.0.0.1
-        assert_eq!(
-            parse_ipv4_from_hex("1").unwrap(),
-            Ipv4Addr::new(0, 0, 0, 1)
-        );
+        assert_eq!(parse_ipv4_from_hex("1").unwrap(), Ipv4Addr::new(0, 0, 0, 1));
         // "00000001" also ok
         assert_eq!(
             parse_ipv4_from_hex("00000001").unwrap(),
@@ -343,4 +445,3 @@ mod tests {
         );
     }
 }
-
