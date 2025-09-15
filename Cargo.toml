@@ -1,0 +1,14 @@
+[package]
+name = "prettify_ip"
+version = "0.1.0"
+edition = "2024"
+authors = ["Samuel Orji"]
+description = "Parse and pretty-print IPv4/IPv6 in canonical and non-canonical forms (decimal dotted IPv6, integer/hex IPv4)."
+license = "MIT"
+repository = "https://github.com/samuelorji/prettify_ip"
+keywords = ["ip", "ipv4", "ipv6", "parser", "network"]
+categories = ["network-programming", "parsing"]
+
+[dependencies]
+
+[dev-dependencies]
